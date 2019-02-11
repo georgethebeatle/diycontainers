@@ -139,6 +139,10 @@ kill 8596
 
 As a result the sleep in the container exited. This would not be possible if we were running sleep in a VM.
 
-So to sum up: The container seems to be a set of processes on the host, that are isolated in such way that prevents the container from seeing processes that are not part of it and files that are not in its container image.
+What is even more interesting - if you try running `reboot` in the left terminal nothing will happen.
+
+So our container looks a lot like a VM in that it has its own view of the filesystem and the process tree, but it does not quite behave like one. It is sharing the same kernel with the host, processes in the container are visible from the host, we cannot do things like reboot. A container is technically a set of processes running in isolation.
+
+## Building Blocks
 
 ## Let's build one
