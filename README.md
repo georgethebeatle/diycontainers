@@ -227,8 +227,180 @@ I_AM_THE_HOST  boot  etc   initrd.img      lib    lost+found  mnt  proc  run   s
 bin            dev   home  initrd.img.old  lib64  media       opt  root  sbin  srv   tmp  vagrant  vmlinuz
 ```
 
-Cool! Our unshared process looks a lot more like the docker container we were playing with in the beginning! Let's list the process tree - run `ps aux` in both terminals. In both places we see the same set of processes which is not what we want. Our container seems to be quite leaky - like a box with just one side. Let's fix that by moving on to the next namespace.
+Cool! Our unshared process looks a lot more like the docker container we were playing with in the beginning! However we still have access to the old rootfs - it can be found under `/old` in the container. Let's check:
+
+```
+$ ls /old
+I_AM_THE_HOST   etc             lib             mnt             run             sys             var
+bin             home            lib64           opt             sbin            tmp             vmlinuz
+boot            initrd.img      lost+found      proc            snap            usr             vmlinuz.old
+dev             initrd.img.old  media           root            srv             vagrant
+```
+
+It is there. If we want we can unmount it via `umount -l /old`
+
+Let's list the process tree - run `ps aux` in both terminals. In both places we see the same set of processes which is not what we want. Our container seems to be quite leaky - like a box with just one side. Let's fix that by moving on to the next namespace. Before we do that do not forget to exit from the container in the left terminal.
 
 ### The pid namespace
 
+Let's isolate our container eve further by unsharing both mount and pid namespaces. Execute the following inthe left terminal window:
+
+```
+unshare -m -p -f /bin/sh
+```
+
+We have added two new options to `unshare`. The `-p` option is telling `unshare` to create a new pid namespace. The `-f` option makes `unshare` fork a child before execing our program. We need to do that because of how pid namespaces work. According to the man page `the first child created by a process after a call to unshare using the CLONE_NEWPID flag has the PID 1, and is the "init" process for the namespace`. So the `-f` is just making sure that the shell process will be the first process in the new pid namespace. Let's confirm that by printing the container shell pid:
+
+```
+$ echo $$
+1
+```
+
+Looks like we are the first process in the container. Pretty cool!
+
+Before we dive into the world of pids lets quickly configure the rootfs as we did before:
+
+```
+cd /tmp/playground
+mount --bind rootfs/ rootfs/
+pivot_root rootfs/ rootfs/old
+umount -l /old
+cd /
+```
+
+Now let's list all the processes in the container:
+
+```
+$ ps aux
+PID   USER     TIME  COMMAND
+ps: can't open '/proc': No such file or directory
+```
+
+It looks weird but it is expected. The ps command is reading the `procfs` filesystem in order to get information about the running processes. It expects to find this filesystem on `/proc` but it is not there so it is failing. Let's fix that. Run this in the container:
+
+```
+mkdir /proc
+mount -t proc none /proc
+```
+
+Now run `ps aux` again:
+
+```
+$ ps aux
+PID   USER     TIME  COMMAND
+    1 0         0:00 /bin/sh
+    7 0         0:00 ps auxf
+```
+
+Voila! We have process tree isolation now. Exactly like we did in the docker container! We are doing pretty good! Our container is still not absolutely safe though. Let's run a long sleep in the container on the left:
+
+```
+sleep 999
+```
+
+While it is sleeping run the following on the host:
+
+```
+$ ps aux | grep "[s]leep 999"
+root      7728  0.0  0.0   3224     4 pts/0    S+   14:55   0:00 sleep 999
+```
+
+As you can see it is running as the root user. This is what we call a privileged contianer. Running your program as the root user is generally discouraged practice in the linux world. The root user is the most privileged user on the system and can do anything, so if a malicious user manages to hack your program they can cause a lot of damage. However if your program runs as an unprivileged user, even if it gets hacked, the hacker would not be able to affect other programs. Let's try to build an unprivileged container. Before that make sure you exit from the current container.
+
+### User namespace
+
+First of all make sure both terminal windows are logged in the ubuntu VM as user vagrant:
+
+```
+su vagrant
+```
+
+Then run the `unshare` command in the left terminal as usual:
+
+```
+unshare -U -m -p -f /bin/sh
+```
+
+Now let's check what user are we running as in the container. Run this on the left:
+
+```
+$ whoami
+nobody
+```
+
+Interesting. If you run this on the host you are going to get `vagrant` as the user name. What happened is that we created a new user namespace, but did not initialize it. That's why we are nobody. User namespaces are a bit different from the others. They are the only type of namespace that you can unshare as an unprivileged user (that's the whole point). The cool thing about running in a user namespace is that you can be `root` (uid 0) inside the namespace, but `vagrant` (uid 1000) in the parent user namespace. This way you have privileges only in the container. This is achieved by the so called user mappings. User mappings need to be written immediately after the user namespace is unshared. They are writen to a special file with path `/proc/<pid>/uid_map`. This is a file in the procfs. This filesystem keeps a directory for each running process. The name of the directory is the same as the process pid as shown by `ps`. So let's find out the pid of our container. Run this on the host:
+
+```
+$ ps auxf | grep -A1 [u]nshare
+vagrant   7773  0.0  0.0   7912   800 pts/0    S    15:07   0:00  |   \_ unshare -U -m -p -f /bin/sh
+vagrant   7774  0.0  0.0   4628   788 pts/0    S+   15:07   0:00  |      \_ /bin/sh
+```
+
+Looks like our `sh` process has a pid of `7774`. Let's list the user mappings for this process:
+
+```
+cat /proc/7774/uid_map
+```
+
+It is empty. This is the reason why our container currently thinks it is nobody. Let's write a sensible mapping. Mappings are written in the following format:
+
+```
+<uid> <puid> <size>
+```
+
+The first number is uid in the new userns, the second number is uid in its parent namespace and the last number is the size of the mapping. For example a mapping with size 2 is going to map `uid` to `puid` and `uid+1` to `puid+1`. In order to map uid 0 in our new user namespace to uid 1000 in its parent (the user namespace of the host) we need to write `0 1000 1` to the mapping file. Let's do it. Run the following command on the host:
+
+```
+echo 0 1000 1 > /proc/7774/uid_map
+```
+
+And now let's check the container user again:
+
+```
+$ whoami
+root
+```
+
+Now, that's somethig. Our shell thinks it is `root`, but if we look at pid `7774` on the host is is run by user `vagrant`.
+
+```
+$ ps aux | grep [7]774
+vagrant   7774  0.0  0.0   4628   788 pts/0    S+   15:07   0:00 /bin/sh
+```
+If we want we can quickly isolate the rootfs and process tree as we did before:
+
+```
+cd /tmp/playground
+mount --bind rootfs/ rootfs/
+pivot_root rootfs/ rootfs/old
+umount -l /old
+cd /
+mount -t proc none /proc
+```
+
+And we have build a decently isolated container. Sure, there's a lot more to do, but I think you should be getting the idea by now, so I am going to stop now.
+
+Here are all the steps that we explored today:
+
+```
+# on the host
+unshare -U -m -p -f
+echo 0 1000 1 > /proc/pid/uid_map
+
+#in the container
+mount --bind rootfs/ rootfs/
+pivot_root rootfs/ rootfs/old
+umount -l /old
+cd /
+mount -t proc none /proc
+```
+
+## Recap
+
+There we are building containers! What did we learn in the process? 
+- Containers don't exist
+- A container is just a set of processes running in isolation
+- We can isolate processes as little or as much as we like using namespaces.
+
+Creating containers is like playing with lego. You can use the primitive building block and you can build whatever you need with them. You do not need to use all namespaces, you can create containers that share namespaces, etc. Docker is doing just that under the hood. Docker is just one of the lego sets. 
 
