@@ -12,6 +12,7 @@ curl -sSL https://get.docker.com/ | sh
 mkdir /tmp/playground
 pushd /tmp/playground
 tar -xf /vagrant/rootfs.tar
+chmod -R 0777 rootfs
 popd
 
 touch /I_AM_THE_HOST
