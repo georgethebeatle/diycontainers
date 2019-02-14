@@ -10,7 +10,9 @@ curl -sSL https://get.docker.com/ | sh
 
 # install busybox
 mkdir /tmp/playground
-cp -r /vagrant/rootfs /tmp/playground/rootfs
+pushd /tmp/playground
+tar -xf /vagrant/rootfs.tar
+popd
 
 touch /I_AM_THE_HOST
 touch /tmp/playground/rootfs/I_AM_THE_CONTAINER
