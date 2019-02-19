@@ -19,17 +19,16 @@ This is exactly what containers are trying to explore. Just like VMs, they are a
 There are multiple definitions of a container. Some popular ones are 'lightweight virtualization' and the shipping container analogy. I am not going to confuse you with yet another one. Instead, let's create a container using docker and explore how it looks like both from the inside and from the outside. 
 
 
-First of all we need a linux machine. They don't call them linux containers for nothing, right? In case you are running on Windows or MacOS you can spin up an ubuntu virtual machine by executing the following script:
+First of all we need a linux machine. They don't call them linux containers for nothing, right? In case you are running on Windows or MacOS you can spin up an ubuntu virtual machine by executing several simple commands. Open a GIT Bash window as Administrator and run the following commands:
 
 ```
-git clone https://github.com/georgethebeatle/diycontainers.git
-cd diycontainers
-vagrant up
+cd workspace/installscript/diycontainers
+vagrant destroy -f && vagrant up # recreate the box to start clean
 ```
 
 This is going to create an ubuntu VM that is running the docker daemon. We are going to refer to it as the 'container host' or just 'host'.
 
-For the rest of the tutorial we are going to be using two terminal windows tiled next to each other. We are going to refer to them as the 'left terminal' and the 'right terminal'. We are going to open shell sessions to the container host in both terminal windows. We will use the left terminal to run commands in the container and the right terminal to run commands on the host. 
+For the rest of the tutorial we are going to be using two terminal windows tiled next to each other (run both GIT Bash terminals as administrotor. To tile them you might use Windows Key + left or right arrow). We are going to refer to them as the 'left terminal' and the 'right terminal'. We are going to open shell sessions to the container host in both terminal windows. We will use the left terminal to run commands in the container and the right terminal to run commands on the host. 
 
 After the vm is up and running make sure you open shell sessions by running the following commands in both terminal windows:
 
@@ -38,13 +37,13 @@ vagrant ssh
 sudo su -
 ```
 
-Now let's create a container with docker. Run this command in your left terminal:
+Now let's create a container using docker, so that we can inspect it. Run this command in your left terminal:
 
 ```
 $ docker run -it busybox
 ```
 
-This should result in a shell running in the newly created container. Now let's run some commands in the container:
+This should result in a shell running in the newly created docker container. Now let's run some commands in the container:
 
 ```
 $ ls -la /
@@ -108,7 +107,7 @@ uname -a
 Linux f758f8c61110 4.15.0-33-generic #36-Ubuntu SMP Wed Aug 15 16:00:05 UTC 2018 x86_64 GNU/Linux
 ```
 
-Comparing the outputs, it seems that the container is behaving a lot like a VM. It is seeing its own image and its own set of processes (with much larger pid numbers) that have nothing to do with those of the host. From the container's point of view it looks like it is running on a different machine. However, the kernel version (displayed by `uname -a`) looks exactly the same.
+When we compare the outputs, we can say that the container is behaving a lot like a VM. It is seeing its own image and its own set of processes (with much smaller pid numbers) that have nothing to do with those of the host. From the container's point of view it looks like it is running on a different machine. However, the kernel version (displayed by `uname -a`) looks exactly the same, which is suspicious.
 
 Now let's trigger a long running process in the container. In your left terminal execute:
 
@@ -121,9 +120,7 @@ While it is sleeping go to your right terminal and list the process tree:
 ```
 $ ps auxf | grep -C3 "[s]leep 9999"
 root     30310  0.2  4.2 957840 43216 ?        Ssl  15:36   0:03 /usr/bin/containerd
-root      8517  0.0  0.4   9324  4976 ?        Sl   16:01   0:00  \_ containerd-shim -namespace moby -workdir /var/lib/contain
-erd/io.containerd.runtime.v1.linux/moby/f758f8c6111068310c25c742624a091a96253bc466c7a1a2fad7f1d720012c13 -address /run/contain
-erd/containerd.sock -containerd-binary /usr/bin/containerd -runtime-root /var/run/docker/runtime-runc
+root      8517  0.0  0.4   9324  4976 ?        Sl   16:01   0:00  \_ containerd-shim -namespace moby -workdir /var/lib/containerd/io.containerd.runtime.v1.linux/moby/f758f8c6111068310c25c742624a091a96253bc466c7a1a2fad7f1d720012c13 -address /run/containerd/containerd.sock -containerd-binary /usr/bin/containerd -runtime-root /var/run/docker/runtime-runc
 root      8540  0.0  0.0   1296     4 pts/0    Ss   16:01   0:00      \_ sh
 root      8596  0.0  0.0   1280     4 pts/0    S+   16:01   0:00          \_ sleep 9999
 root     31342  0.0  8.3 874524 84344 ?        Ssl  15:36   0:00 /usr/bin/dockerd -H fd://
@@ -137,19 +134,19 @@ It looks like the sleep we triggered in the container is actually a process on t
 kill 8596
 ```
 
-As a result the sleep in the container exited. This would not be possible if we were running sleep in a VM. What is even more interesting - if you try running `reboot` in the left terminal (in the container) nothing will happen.
+As a result the sleep in the container exited. This would not be possible if we were running sleep in a VM. What is even more interesting - if you try running `reboot` in the left terminal (in the container) nothing will happen. Not what you would expect if you executed this command on a VM.
 
 So to sum up our container looks a lot like a VM in that it has its own view of the filesystem and the process tree, but it does not quite behave like one. It is sharing the same kernel with the host, processes in the container are visible from the host, we cannot do things like reboot. A container is a set of processes running in isolation.
 
 ## Containers do not exist
 
-Yeah, that's right! In the linux kernel there is no single native object that represents a container. Instead, a container is composed of lower level kernel primitives like processes, namespaces and cgroups. We already saw that a container is essentially a set of processes running on the host. But what are namespaces and cgroups? Put simply these are kernel primitives for process isolation. Each linux namespace isolates a certain aspect of the process by giving it its own view of some part of the system, like the filesystem or the process tree. Here are the main types of linux namespaces:
-- Mount: gives the process its own view of the root filesystem
+Yeah, that's right! In the linux kernel there is no single native object that represents a container. Instead, a container is composed of lower level kernel primitives like processes, namespaces and cgroups. We already saw that a container is essentially a set of processes running on the host. But what are namespaces and cgroups? Put simply these are kernel primitives for process isolation. Each linux namespace isolates a certain aspect of the process by giving it its own view of some part of the system, like the filesystem, the process tree and others. Here are the most important types of linux namespaces:
+- Mount: gives the process its own view of the root filesystem (a.k.a. container image)
 - Pid: gives the process its own view of the process tree
 - User: giver the process its own view of the OS users
 - others: There are a few more, but they are not as visible, so we are going to focus on the three above.
 
-Each process in the linux OS is running in a namespace of each type. Namespaces form a hierarchy. Most of the processes on the host are sharing the same set of namespaces at the root of that hierarchy. As a result they have the same view of the system - they are seeing the same files and the same process tree. The root user can create child namespaces using the `unshare` command. A call to unshare looks like this:
+Each process in the linux OS is running in a namespace of each type. Namespaces form a hierarchy. Most of the processes on the host are sharing the same set of namespaces at the root of that hierarchy. As a result they have the same view of the system - they are seeing the same files and the same process tree. The root user can create child namespaces using the `unshare` command. A call to `unshare` looks like this:
 
 ```
 unshare [options] [<program> [<argument>...]]
@@ -157,24 +154,24 @@ unshare [options] [<program> [<argument>...]]
 
 It takes options, which are telling it what namespaces top unshare and what program to run in the unshared namespaces. As a result we get a new process that is running in a new set of namespaces, so it has a different view of the system. It can modify certain aspects of the system without affecting the rest of the processes on the host. When this process exists the linux kernel is going to deallocate the new namespaces and the changes will go away. That's the basic lifecycle of a linux namespace.
 
-Cool, what about cgroups? Cgroup stands for 'control group'. Cgroups are another set of primitives which are used to control process resource usage, by setting resource limits. They are completely orthogonal to namespaces. For example you can create a new memory cgroup that sets a memory limit. You can join your process to that cgroup and it won't be able to allocate more memory than the amount specified in the cgroup. Some important types of cgroups are `memory`, `cpu` and `blkio`.  Cgroups play an important role in container isolation, but have less visible effects than namespaces, so we are not going to explore them today.
+Cool, what about cgroups? Cgroup stands for 'control group'. Cgroups are another set of primitives which are used to control process resource usage, by setting resource limits. They are completely orthogonal to namespaces. For example you can create a new memory cgroup that sets a memory limit. You can join your process to that cgroup and it won't be able to allocate more memory than the amount specified in the cgroup. Some important types of cgroups are `memory`, `cpu` and `blkio`.  Cgroups play an important role in container isolation, but have less visible effects than namespaces, so we are not going to explore them in this tutorial.
 
 
 ## Let's build a container
 
 Let's finally get our hands dirty and start building our own container using namespaces and the `unshare` command. We are going to need just a clean linux distro and a root filesystem to use as an image for our container. We are not going to need docker.
 
-In order to prepare your terminals type `exit` in the left one. This will kill the docker container we created earlier and get you back to the host. In both terminals make sure you are still logged in the vagrant VM as the `root` user. You need to be root in order to create new namespaces.
+In order to prepare your terminals type `exit` in the left one. This will kill the docker container we created earlier and get you back to the host. In both terminals make sure you are still logged in the vagrant VM as the `root` user. Remember, you need to be root in order to create new namespaces.
 
 ### The mount namespace
 
-So we need to create a process and some namespaces. We will start with the mount namespace. According to the kernel docs `Mount namespaces provide isolation of the list of mount points seen by the processes in each namespace instance.` What does that mean? In the Linux OS the filesystem has a single root - a directory named `/`. All other files and directories are children and grandchildren of `/`. The filesystem that starts on `/` is known as a root filesystem (rootfs) or the machine image. If we want to look at another fileystem, for example a USB stick or some network storage, we need to mount the new filesystem somewhere in the root filesystem, so that we can browse it. For example we might mount a USB stick on `/mnt/myusbstick` and if it is correctly formatted we will be able to see its contents under that path. `/mnt/myusbstick` is a mountpoint, since it is the root of a filesystem that is different from the root filesystem. The list of all mount points is known as the mount table. The only thing that the mount namespace does is to provide the new process with a unique copy of the mount table. In the beginning it is an exact clone of the parent mount namespace, but any mounts that the new process does go to its own mount table and are not visible on the host. Let's see this in action. In your left terminal, run this command:
+So we need to create a process and some namespaces. We will start with the mount namespace. According to the kernel docs `Mount namespaces provide isolation of the list of mount points seen by the processes in each namespace instance.` What does that mean? In the Linux OS the filesystem has a single root - a directory named `/`. All other files and directories are children and grandchildren of `/`. The filesystem that starts on `/` is known as a root filesystem (rootfs) or the machine image. If we want to look at another fileystem, for example a USB stick or some network storage, we need to mount the new filesystem somewhere in the root filesystem, so that we can browse it. For example we might mount a USB stick on `/mnt/myusbstick` and if it is correctly formatted we will be able to see its contents under that path. `/mnt/myusbstick` is a mountpoint, since it is the root of a filesystem that is different from the root filesystem. The list of all mount points is known as the mount table. The only thing that the mount namespace does is to provide the new process with a unique copy of the mount table, or in other words - its own view of the mount table. In the beginning it is an exact clone of the parent mount namespace, but any mounts that the new process creates will go to its own mount table and will not be visible on the host. Let's see this in action. In your left terminal, run this command:
 
 ```
 unshare -m /bin/sh
 ```
 
-This is going to start a new shell process in its own mount namespace. Let's inspect the mount tables from both the unshared shell and the host. Run `cat /proc/mounts` in both windows. You will notice that they are identical. The mount table in the new mount namespace starts off as a copy of the host's mount table. We can count the number of mount points by running `cat /proc/mounts | wc -l` and it will be the same on the host and in the new namespace. On my machine this number happens to be 33.
+This is going to start a new shell process in its own mount namespace. Let's inspect the mount tables from both the left and the right terminal. Run `cat /proc/mounts` in both windows. You will notice that they are identical. The mount table in the new mount namespace starts off as a copy of the host's mount table. We can count the number of mount points by running `cat /proc/mounts | wc -l` and it will be the same on the host and in the new namespace. On my machine this number happens to be 33.
 
 You might wonder what is this `proc` directory that we are looking at. Let's spend a minute talking about it since it is an important concept. The `/proc` directory itself is a mount point. We can confirm this by executing this on the host:
 
@@ -183,7 +180,7 @@ $ mountpoint /proc
 /proc is a mountpoint
 ```
 
-If it is a mountpoint this means there is a filesystem that is mounted under it. This is the `procfs` filesystem - it is a special virtual filesystem. It is not associated with a block storage device such as a disk or a USB, but it is directly exposing runtime information about the state of the system, such as the mount tables and the processes that are currently running. It contains many virtual files that give you real time info about certain aspects of the system. For example `/proc/uptime` tells you how long has the machine been running and `/proc/meminfo` gives you detailed information about allocated memory.
+If it is a mountpoint this means there is a filesystem that is mounted underneath it. This is the `procfs` filesystem - it is a special virtual filesystem. It is not associated with a block storage device such as a disk or a USB, but it is directly exposing runtime information about the state of the system, such as the mount tables and the processes that are currently running. It contains many virtual files that give you real time info about certain aspects of the system. For example `/proc/uptime` tells you how long has the machine been running and `/proc/meminfo` gives you detailed information about allocated memory.
 
 Back to what we were doing. Now that we have a new mount namespace, let's mount something. In the left terminal navigate to `/tmp/playground` and list the `rootfs` directory.
 
@@ -193,23 +190,23 @@ $ ls rootfs
 I_AM_THE_CONTAINER  bin  linuxrc  sbin  usr
 ```
 
-The `rootfs` directory is the busybox image that we will be using as a rootfs for our container. Let's bind mount the rootfs.
+The `rootfs` directory contains the busybox image that we will be using as a rootfs for all our container experiments. Let's bind mount the rootfs.
 
 ```
 mount --bind rootfs/ rootfs/
 ```
 
-We just created a new mount point and mounted the contents of the `rootfs` directory as a new filesystem. The `--bind` option tells the mount command that the filesystem data is not coming from a device such as a disk or a flash drive, but from a local directory. The first argument is the path to the source dorectory and the second argument is the path where we want to mount it. In our case we are mounting the rootfs dir onto itself. We are doing this just to get `/tmp/playground/rootfs` in the mount table. You will see why we need it there in a second.
+We just created a new mount point and mounted the contents of the `rootfs` directory as a new filesystem. The `--bind` option tells the mount command that the filesystem data is not coming from a block storage device such as a disk or a flash drive, but from a local directory. The first argument is the path to the source directory and the second argument is the path where we want to mount it. In our case we are mounting the rootfs dir onto itself. We are doing this, because all we want is to get `/tmp/playground/rootfs` in the mount table. You will see why we need it there in a second. We could have mounted it on an arbitrary path if we wanted.
 
-Now that we have a mount point in the contiainer let's run `cat /proc/mounts | wc -l` in both terminal windows. This time is is reporting 34 mount points in the container and 33 on the host. We are already witnessing some isolation. Unfortunately listing `/` still yields the same results in both terminal windows. What are we missing?
+Now that we have a mount point in the container let's run `cat /proc/mounts | wc -l` in both terminal windows in order to count the mount points again. This time is is reporting 34 mount points in the container and 33 on the host. We are already witnessing some isolation. Unfortunately listing `/` still yields the same results in both terminal windows, so the unshared process does not quite look like a container yet. What are we missing?
 
-Well, just unsharing a new mount namespace and bind mounting a rootfs is not enough to give the container its own vie of the root filesystem. Technically both shell processes still have the same rootfs and this is the rootfs of the ubuntu VM. In order to change the rootfs of the container we need to run the `pivot_root` command. Here is how it is used:
+Well, just unsharing a new mount namespace and bind mounting a rootfs is not enough to give the container its own view of the root filesystem. Technically both shell processes still have the same rootfs and this is the rootfs of the ubuntu VM. In order to change the rootfs of the container we need to run the `pivot_root` command. Here is how it is used:
 
 ```
 pivot_root new_root put_old
 ```
 
-This command will change the root filesystem of the calling process. The first argument is the new rootfs. It needs to be a mountpoint - that's why we needed to bind mount the rootfs. The second argument is a path in the new rootfs where `pivot_root` is going to put the old ubuntu VM rootfs. Let's try it:
+This command will change the root filesystem of the calling process. The first argument is the new rootfs that we want to switch to. It needs to be a mountpoint - that's why we needed to bind mount the rootfs. The second argument is a path in the new rootfs where `pivot_root` is going to put the old ubuntu VM rootfs, so that its accessible in case we need it. Let's try:
 
 ```
 $ mkdir rootfs/old
@@ -239,7 +236,7 @@ dev             initrd.img.old  media           root            srv             
 
 It is there. If we want we can unmount it via `umount -l /old`
 
-Let's list the process tree - run `ps aux` in both terminals. In both places we see the same set of processes which is not what we want. Our container seems to be quite leaky - like a box with just one side. Let's fix that by moving on to the next namespace. Before we do that do not forget to exit from the container in the left terminal.
+Now let's list the process tree - run `ps aux` in both terminals. We see the same set of processes which is not what we would expect in a container. Let's fix that by moving on to the next namespace. Before we do that do not forget to exit from the container in the left terminal.
 
 ### The pid namespace
 
