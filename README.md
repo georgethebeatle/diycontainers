@@ -240,7 +240,7 @@ Now let's list the process tree - run `ps aux` in both terminals. We see the sam
 
 ### The pid namespace
 
-Let's isolate our container eve further by unsharing both mount and pid namespaces. Execute the following inthe left terminal window:
+Let's isolate our container even further by unsharing both mount and pid namespaces. Execute the following in the left terminal window:
 
 ```
 unshare -m -p -f /bin/sh
@@ -302,7 +302,7 @@ $ ps aux | grep "[s]leep 999"
 root      7728  0.0  0.0   3224     4 pts/0    S+   14:55   0:00 sleep 999
 ```
 
-As you can see it is running as the root user. This is what we call a privileged contianer. Running your program as the root user is generally discouraged practice in the linux world. The root user is the most privileged user on the system and can do anything, so if a malicious user manages to hack your program they can cause a lot of damage. However if your program runs as an unprivileged user, even if it gets hacked, the hacker would not be able to affect other programs. Let's try to build an unprivileged container. Before that make sure you exit from the current container.
+As you can see our sleep process is running as the host root user. This is what we call a privileged container - a container running as host root. Running your program as the root user is generally discouraged practice in the linux world. The root user is the most privileged user on the system and can do anything, so if someone manages to hack your program they can cause a lot of damage. However if your program runs as an unprivileged user, even if it gets hacked, the hacker would not be able to easily affect other programs. Let's try to build an unprivileged container. Before that make sure you exit from the current container.
 
 ### User namespace
 
@@ -325,7 +325,7 @@ $ whoami
 nobody
 ```
 
-Interesting. If you run this on the host you are going to get `vagrant` as the user name. What happened is that we created a new user namespace, but did not initialize it. That's why we are nobody. User namespaces are a bit different from the others. They are the only type of namespace that you can unshare as an unprivileged user (that's the whole point). The cool thing about running in a user namespace is that you can be `root` (uid 0) inside the namespace, but `vagrant` (uid 1000) in the parent user namespace. This way you have privileges only in the container. This is achieved by the so called user mappings. User mappings need to be written immediately after the user namespace is unshared. They are writen to a special file with path `/proc/<pid>/uid_map`. This is a file in the procfs. This filesystem keeps a directory for each running process. The name of the directory is the same as the process pid as shown by `ps`. So let's find out the pid of our container. Run this on the host:
+Interesting. If you run this on the host you are going to get `vagrant` as the user name. What happened is that we created a new user namespace, but did not initialize it. That's why we are 'nobody'. User namespaces are a bit different from the others. They are the only type of namespace that you can unshare as an unprivileged user (that's the whole point). The cool thing about running in a user namespace is that you can be `root` (uid 0) inside the namespace, but `vagrant` (uid 1000) in the parent user namespace. This way you have privileges only in the container. This is achieved by the so called user mappings. User mappings need to be written immediately after the user namespace is unshared. They are written to a special file with path `/proc/<pid>/uid_map`. This yet another virtual file in the procfs. The procfs keeps a directory for each running process. The name of the directory is the same as the process pid as shown by `ps`. So let's find out the pid of our container. Run this on the host:
 
 ```
 $ ps auxf | grep -A1 [u]nshare
@@ -339,7 +339,7 @@ Looks like our `sh` process has a pid of `7774`. Let's list the user mappings fo
 cat /proc/7774/uid_map
 ```
 
-It is empty. This is the reason why our container currently thinks it is nobody. Let's write a sensible mapping. Mappings are written in the following format:
+It is empty. This is the reason why our container currently thinks it is nobody. The users in the new user namespace are not mapped to the users on the host. Let's write a sensible mapping. Mappings are written to `/proc/<pid>/uid_map` in the following format:
 
 ```
 <uid> <puid> <size>
@@ -375,9 +375,9 @@ cd /
 mount -t proc none /proc
 ```
 
-And we have build a decently isolated container. Sure, there's a lot more to do, but I think you should be getting the idea by now, so I am going to stop now.
+And we have built a decently isolated container. Sure, there's a lot more to do, but I think you are getting the point, so I am going to stop now.
 
-Here are all the steps that we explored today:
+Here are the steps that we performed all in one place:
 
 ```
 # on the host
@@ -399,5 +399,7 @@ There we are building containers! What did we learn in the process?
 - A container is just a set of processes running in isolation
 - We can isolate processes as little or as much as we like using namespaces.
 
-Creating containers is like playing with lego. You can use the primitive building block and you can build whatever you need with them. You do not need to use all namespaces, you can create containers that share namespaces, etc. Docker is doing just that under the hood. Docker is just one of the lego sets. 
+Creating containers is like playing with lego. You can use the primitive building blocks and you can build whatever you need with them. You do not need to use all namespaces, you can create containers that share namespaces, the options are limitless. Docker is doing just that under the hood. It is just one of the available lego sets. There are others as well, but the important part is that they are all using the same building blocks. 
+
+## The End
 
