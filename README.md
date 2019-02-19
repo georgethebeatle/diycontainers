@@ -304,7 +304,7 @@ root      7728  0.0  0.0   3224     4 pts/0    S+   14:55   0:00 sleep 999
 
 As you can see our sleep process is running as the host root user. This is what we call a privileged container - a container running as host root. Running your program as the root user is generally discouraged practice in the linux world. The root user is the most privileged user on the system and can do anything, so if someone manages to hack your program they can cause a lot of damage. However if your program runs as an unprivileged user, even if it gets hacked, the hacker would not be able to easily affect other programs. Let's try to build an unprivileged container. Before that make sure you exit from the current container.
 
-### User namespace
+### The User namespace
 
 First of all make sure both terminal windows are logged in the ubuntu VM as user vagrant:
 
