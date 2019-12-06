@@ -134,7 +134,7 @@ It looks like the sleep we triggered in the container is actually a process on t
 kill 8596
 ```
 
-As a result the sleep in the container exited. This would not be possible if we were running sleep in a VM. What is even more interesting - if you try running `reboot` in the left terminal (in the container) nothing will happen. Not what you would expect if you executed this command on a VM.
+As a result, the sleep in the container exited. This would not be possible if we were running sleep in a VM. What is even more interesting - if you try running `reboot` in the left terminal (in the container) nothing will happen. Not what you would expect if you executed this command on a VM.
 
 So to sum up our container looks a lot like a VM in that it has its own view of the filesystem and the process tree, but it does not quite behave like one. It is sharing the same kernel with the host, processes in the container are visible from the host, we cannot do things like reboot. A container is a set of processes running in isolation.
 
@@ -152,7 +152,7 @@ Each process in the linux OS is running in a namespace of each type. Namespaces 
 unshare [options] [<program> [<argument>...]]
 ```
 
-It takes options, which are telling it what namespaces top unshare and what program to run in the unshared namespaces. As a result we get a new process that is running in a new set of namespaces, so it has a different view of the system. It can modify certain aspects of the system without affecting the rest of the processes on the host. When this process exists the linux kernel is going to deallocate the new namespaces and the changes will go away. That's the basic lifecycle of a linux namespace.
+It takes options, which are telling it what namespaces to unshare and what program to run in the unshared namespaces. As a result we get a new process that is running in a new set of namespaces, so it has a different view of the system. It can modify certain aspects of the system without affecting the rest of the processes on the host. When this process exits, the linux kernel is going to deallocate the new namespaces and the changes will go away. That's the basic lifecycle of a linux namespace.
 
 Cool, what about cgroups? Cgroup stands for 'control group'. Cgroups are another set of primitives which are used to control process resource usage, by setting resource limits. They are completely orthogonal to namespaces. For example you can create a new memory cgroup that sets a memory limit. You can join your process to that cgroup and it won't be able to allocate more memory than the amount specified in the cgroup. Some important types of cgroups are `memory`, `cpu` and `blkio`.  Cgroups play an important role in container isolation, but have less visible effects than namespaces, so we are not going to explore them in this tutorial.
 
@@ -180,12 +180,12 @@ $ mountpoint /proc
 /proc is a mountpoint
 ```
 
-If it is a mountpoint this means there is a filesystem that is mounted underneath it. This is the `procfs` filesystem - it is a special virtual filesystem. It is not associated with a block storage device such as a disk or a USB, but it is directly exposing runtime information about the state of the system, such as the mount tables and the processes that are currently running. It contains many virtual files that give you real time info about certain aspects of the system. For example `/proc/uptime` tells you how long has the machine been running and `/proc/meminfo` gives you detailed information about allocated memory.
+If it is a mountpoint, this means there is a filesystem that is mounted underneath it. This is the `procfs` filesystem - it is a special virtual filesystem. It is not associated with a block storage device such as a disk or a USB, but it is directly exposing runtime information about the state of the system, such as the mount tables and the processes that are currently running. It contains many virtual files that give you real time info about certain aspects of the system. For example `/proc/uptime` tells you how long has the machine been running and `/proc/meminfo` gives you detailed information about allocated memory.
 
 Back to what we were doing. Now that we have a new mount namespace, let's mount something. In the left terminal navigate to `/tmp/playground` and list the `rootfs` directory.
 
 ```
-$ cd /tmp/platground
+$ cd /tmp/playground
 $ ls rootfs
 I_AM_THE_CONTAINER  bin  linuxrc  sbin  usr
 ```
@@ -345,7 +345,7 @@ It is empty. This is the reason why our container currently thinks it is nobody.
 <uid> <puid> <size>
 ```
 
-The first number is uid in the new userns, the second number is uid in its parent namespace and the last number is the size of the mapping. For example a mapping with size 2 is going to map `uid` to `puid` and `uid+1` to `puid+1`. In order to map uid 0 in our new user namespace to uid 1000 in its parent (the user namespace of the host) we need to write `0 1000 1` to the mapping file. Let's do it. Run the following command on the host:
+The first number is uid in the new userns, the second number is uid in its parent namespace and the last number is the size of the mapping. For example, a mapping with size 2 is going to map `uid` to `puid` and `uid+1` to `puid+1`. In order to map uid 0 in our new user namespace to uid 1000 in its parent (the user namespace of the host) we need to write `0 1000 1` to the mapping file. Let's do it. Run the following command on the host:
 
 ```
 echo 0 1000 1 > /proc/7774/uid_map
@@ -399,7 +399,7 @@ There we are building containers! What did we learn in the process?
 - A container is just a set of processes running in isolation
 - We can isolate processes as little or as much as we like using namespaces.
 
-Creating containers is like playing with lego. You can use the primitive building blocks and you can build whatever you need with them. You do not need to use all namespaces, you can create containers that share namespaces, the options are limitless. Docker is doing just that under the hood. It is just one of the available lego sets. There are others as well, but the important part is that they are all using the same building blocks. 
+Creating containers is like playing with legos. You can use the primitive building blocks and you can build whatever you need with them. You do not need to use all namespaces, you can create containers that share namespaces, the options are limitless. Docker is doing just that under the hood. It is just one of the available lego sets. There are others as well, but the important part is that they are all using the same building blocks.
 
 ## The End
 
